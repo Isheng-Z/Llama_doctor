@@ -1,4 +1,5 @@
 import torch
+from peft import PeftConfig, PeftModel
 from transformers import  AutoModelForCausalLM, BitsAndBytesConfig
 import warnings
 from transformers import LlamaTokenizer
@@ -15,13 +16,23 @@ bnb_config = BitsAndBytesConfig(
 )
 
 # 加载模型（首次运行需等待下载）
-model = AutoModelForCausalLM.from_pretrained(
+base_model = AutoModelForCausalLM.from_pretrained(
     "./Llama-2-7b-chat-hf",  # 本地路径
     quantization_config=bnb_config,
     device_map="auto",
     local_files_only=True  # 强制使用本地文件
 )
+# 2. 加载LoRA适配器
+peft_model_id = "llama2-7b-medical-lora"  # 替换为实际路径
+config = PeftConfig.from_pretrained(peft_model_id)
+model = PeftModel.from_pretrained(
+    base_model,
+    peft_model_id,
+    is_trainable=False  # 推理模式（如需继续训练设为True）
+)
 
+# 3. 合并权重（可选，提升推理速度）
+model = model.merge_and_unload()
 # 加载并配置分词器
 # tokenizer = AutoTokenizer.from_pretrained(
 #     "./Llama-2-7b-chat-hf",
