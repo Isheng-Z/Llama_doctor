@@ -58,7 +58,6 @@ if tokenizer.pad_token is None:
 # 同步模型配置
 model.config.pad_token_id = tokenizer.pad_token_id
 
-
 # 初始化对话历史
 dialogue_history = []
 initial_instruction = "Please ask me about your health concerns."

@@ -15,7 +15,6 @@ def build_prompt(history,count):
         """
         )
 
-
     else:
         system_prompt = ("<<SYS>>\nYou are a helpful healthcare assistant. Provide accurate and safe suggestions."
                          "You are a healthcare advisor and limit yourself to answering healthcare-related questions. If the question is outside of medical scope, answer: 'Sorry, I can only answer medical-related questions.' ”.\n<</SYS>>\n\n")

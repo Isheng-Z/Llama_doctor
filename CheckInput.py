@@ -26,14 +26,3 @@ def classify_text(text):
     best_label = result['labels'][0]
     return True if best_label == "non-healthcare" else False
 
-if __name__ == "__main__":
-    while True:
-        user_input = input("\n用户：")
-        if user_input.lower() in ['exit', 'quit']:
-            print("对话结束")
-            break
-
-        if classify_text(user_input):
-            print("AI: 我是医疗助手,请说明您的健康方面疑问！")
-            continue
-
