@@ -3,7 +3,8 @@ from peft import PeftConfig, PeftModel
 from transformers import  AutoModelForCausalLM, BitsAndBytesConfig
 import warnings
 from transformers import LlamaTokenizer
-
+from CheckInput import classify_text
+from Chat_Module import build_prompt
 # 忽略特定警告
 warnings.filterwarnings("ignore", category=UserWarning, message=".*flash attention.*")
 
@@ -58,37 +59,35 @@ if tokenizer.pad_token is None:
 model.config.pad_token_id = tokenizer.pad_token_id
 
 
-# 定义Llama-2专用对话模板（支持多轮对话）
-def build_prompt(history):
-    system_prompt = "<<SYS>>\nYou are a helpful medical assistant. Provide accurate and safe suggestions.\n<</SYS>>\n\n"
-    prompt = "<s>[INST] " + system_prompt
-    for user, assistant in history:
-        prompt += f"{user} [/INST] {assistant} </s><s>[INST] "
-    return prompt
-
-
 # 初始化对话历史
 dialogue_history = []
 initial_instruction = "Please ask me about your health concerns."
 
+#对话轮次
+count = 0
+
 # 启动对话
 print("医疗助手已启动（输入 'exit' 退出）\n")
-print("AI：您好，我是医疗助手。请问您有什么健康方面的疑问？")
+print("AI：您好，我是您的在线问诊助手，请问您主要是关于哪方面的问题呢？比如呼吸系统、消化系统、心血管、神经系统、皮肤问题等")
 
 while True:
     # 获取用户输入
     user_input = input("\n用户：")
-
     if user_input.lower() in ['exit', 'quit']:
         print("对话结束")
         break
+
+    if classify_text(user_input):
+        print("AI: 我是医疗助手,请说明您的健康方面疑问！")
+        continue
+
 
     # 添加用户输入到历史
     dialogue_history.append((user_input, ""))
 
     try:
         # 构建完整提示
-        full_prompt = build_prompt(dialogue_history)
+        full_prompt = build_prompt(dialogue_history,count)
         inputs = tokenizer(
             full_prompt,
             return_tensors="pt",
