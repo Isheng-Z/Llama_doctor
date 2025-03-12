@@ -18,11 +18,13 @@ def classify_text(text):
         "sleep disorder",  # 睡眠障碍相关
         "mental health",  # 心理健康相关
         "nutrition",  # 营养咨询相关
-        "emergency care"  # 急诊护理相关
+        "emergency care" , # 急诊护理相关
+        "hair loss",
+        "Skin problem"
     ]
     # 进行零样本分类
     result = classifier(text, candidate_labels)
     # 返回得分最高的标签所对应的类别
     best_label = result['labels'][0]
-    return True if best_label == "non-healthcare" else False
+    return False
 

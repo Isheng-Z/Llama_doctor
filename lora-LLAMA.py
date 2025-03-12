@@ -1,10 +1,12 @@
 import torch
 from peft import PeftConfig, PeftModel
-from transformers import  AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig, LlamaTokenizer
 import warnings
-from transformers import LlamaTokenizer
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from CheckInput import classify_text
 from Chat_Module import build_prompt
+
 # 忽略特定警告
 warnings.filterwarnings("ignore", category=UserWarning, message=".*flash attention.*")
 
@@ -16,13 +18,14 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16
 )
 
-# 加载模型（首次运行需等待下载）
+# 1. 加载基础模型（首次运行需等待下载）
 base_model = AutoModelForCausalLM.from_pretrained(
     "./Llama-2-7b-chat-hf",  # 本地路径
     quantization_config=bnb_config,
     device_map="auto",
     local_files_only=True  # 强制使用本地文件
 )
+
 # 2. 加载LoRA适配器
 peft_model_id = "llama2-7b-medical-lora"  # 替换为实际路径
 config = PeftConfig.from_pretrained(peft_model_id)
@@ -34,59 +37,38 @@ model = PeftModel.from_pretrained(
 
 # 3. 合并权重（可选，提升推理速度）
 model = model.merge_and_unload()
-# 加载并配置分词器
-# tokenizer = AutoTokenizer.from_pretrained(
-#     "./Llama-2-7b-chat-hf",
-#     use_fast=True,
-#     padding_side="right",  # 确保填充方向正确
-#     local_files_only=True
-# )
 
-
-
-
-# 使用 LlamaTokenizer 加载模型
+# 4. 加载并配置分词器
 tokenizer = LlamaTokenizer.from_pretrained('./Llama-2-7b-chat-hf')
-
-
-
-
-# 关键修复：设置填充标记
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token  # 使用EOS作为填充标记
-
-# 同步模型配置
 model.config.pad_token_id = tokenizer.pad_token_id
 
-# 初始化对话历史
+# 初始化对话历史和轮次计数（仅适用于单用户场景）
 dialogue_history = []
-initial_instruction = "Please ask me about your health concerns."
-
-#对话轮次
 count = 0
 
-# 启动对话
-print("医疗助手已启动（输入 'exit' 退出）\n")
-print("AI：您好，我是您的在线问诊助手，请问您主要是关于哪方面的问题呢？比如呼吸系统、消化系统、心血管、神经系统、皮肤问题等")
+# 创建 Flask 服务
+app = Flask(__name__)
+CORS(app)  # 允许所有来源的跨域请求
 
-while True:
-    # 获取用户输入
-    user_input = input("\n用户：")
-    if user_input.lower() in ['exit', 'quit']:
-        print("对话结束")
-        break
 
+@app.route('/generate', methods=['POST'])
+def generate():
+    global dialogue_history, count
+    data = request.get_json()
+    user_input = data.get('input', '')
+
+    # 检查输入内容（如不符合要求，返回提示信息）
     if classify_text(user_input):
-        print("AI: 我是医疗助手,请说明您的健康方面疑问！")
-        continue
+        return jsonify({'output': '我是医疗助手，请告诉我您的健康问题！'})
 
-
-    # 添加用户输入到历史
+    # 将用户输入加入对话历史（assistant回复暂为空）
     dialogue_history.append((user_input, ""))
 
     try:
-        # 构建完整提示
-        full_prompt = build_prompt(dialogue_history,count)
+        # 构建完整提示（可能包含多轮对话历史）
+        full_prompt = build_prompt(dialogue_history, count)
         inputs = tokenizer(
             full_prompt,
             return_tensors="pt",
@@ -98,7 +80,7 @@ while True:
         # 生成参数配置
         generate_kwargs = {
             "input_ids": inputs.input_ids,
-            "attention_mask": inputs.attention_mask,  # 关键修复：添加注意力掩码
+            "attention_mask": inputs.attention_mask,  # 添加注意力掩码
             "max_new_tokens": 400,  # 适当增加医疗建议长度
             "temperature": 0.7,  # 平衡创造性和准确性
             "top_p": 0.9,
@@ -107,20 +89,23 @@ while True:
             "pad_token_id": tokenizer.eos_token_id  # 确保使用正确pad token
         }
 
-        # 生成回复
+        # 调用大模型生成回复
         with torch.no_grad():
             outputs = model.generate(**generate_kwargs)
+            # 截取新增部分作为回复
             response = tokenizer.decode(
                 outputs[0][inputs.input_ids.shape[-1]:],
                 skip_special_tokens=True
             )
 
-        # 更新对话历史
+        # 更新对话历史中最后一轮
         dialogue_history[-1] = (user_input, response)
-
-        # 打印回复（带格式优化）
-        print("\nAI：" + response.replace("\n", "\n    "))
-
+        return jsonify({'output': response})
     except Exception as e:
-        print(f"\n发生错误：{str(e)}")
         dialogue_history.pop()  # 移除无效对话轮次
+        return jsonify({'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+    # 监听所有网卡，方便局域网内调用
+    app.run(host='0.0.0.0', port=5001)
